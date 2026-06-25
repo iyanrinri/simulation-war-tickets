@@ -15,16 +15,16 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       port: parseInt(process.env.REDIS_PORT || '6379', 10),
     });
     
-    // Define the Lua command
-    this.redis.defineCommand('requestSlot', {
+    // Define the Lua command using ZSET for automatic expiration
+    this.redis.defineCommand('requestSlotAtomic', {
       numberOfKeys: 1,
       lua: `
-        local current = redis.call('GET', KEYS[1])
-        if current and tonumber(current) >= tonumber(ARGV[1]) then
+        redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', tonumber(ARGV[2]))
+        local current_count = redis.call('ZCARD', KEYS[1])
+        if current_count >= tonumber(ARGV[1]) then
             return 0
         else
-            redis.call('INCR', KEYS[1])
-            redis.call('SET', ARGV[2], 'ACTIVE', 'EX', tonumber(ARGV[3]))
+            redis.call('ZADD', KEYS[1], tonumber(ARGV[3]), ARGV[4])
             return 1
         end
       `,
@@ -37,16 +37,21 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
 
   async requestSlot(userId: string) {
     const sessionKey = `user_slot:${userId}`;
+    const now = Date.now();
+    
+    // Clean up expired slots
+    await this.redis.zremrangebyscore('active_ticket_slots', '-inf', now);
     
     // Check if user already has a slot
-    const existing = await this.redis.get(sessionKey);
-    if (existing) {
+    const existingScore = await this.redis.zscore('active_ticket_slots', sessionKey);
+    if (existingScore) {
       return { sessionToken: sessionKey, expiresInSeconds: this.SESSION_TTL, existing: true };
     }
 
+    const expiresAt = now + (this.SESSION_TTL * 1000);
     // Execute Lua script
     // @ts-ignore
-    const result = await this.redis.requestSlot('ticket_slots_counter', this.MAX_SLOTS, sessionKey, this.SESSION_TTL);
+    const result = await this.redis.requestSlotAtomic('active_ticket_slots', this.MAX_SLOTS, now, expiresAt, sessionKey);
     
     if (result === 0) {
       throw new HttpException('Slot penuh, silakan coba beberapa saat lagi.', HttpStatus.TOO_MANY_REQUESTS);
@@ -57,22 +62,16 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
 
   async releaseSlot(userId: string) {
     const sessionKey = `user_slot:${userId}`;
-    
-    // Use MULTI to atomically delete key and decrement counter
-    const exists = await this.redis.exists(sessionKey);
-    if (exists) {
-      await this.redis.multi()
-        .del(sessionKey)
-        .decr('ticket_slots_counter')
-        .exec();
-    }
+    await this.redis.zrem('active_ticket_slots', sessionKey);
     return { success: true };
   }
 
   async getCounter() {
-    const count = await this.redis.get('ticket_slots_counter');
+    const now = Date.now();
+    await this.redis.zremrangebyscore('active_ticket_slots', '-inf', now);
+    const count = await this.redis.zcard('active_ticket_slots');
     return {
-      currentCounter: count ? parseInt(count) : 0,
+      currentCounter: count,
       maxSlots: this.MAX_SLOTS,
       isSimulationRunning: this.isBotSimulationRunning,
       activeBots: this.activeBotsCount
@@ -80,11 +79,17 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async resetPool() {
+    await this.redis.del('active_ticket_slots');
+    
+    // Clean up old keys just in case we are transitioning from the old system
     const keys = await this.redis.keys('user_slot:*');
-    const pipeline = this.redis.pipeline();
-    keys.forEach(k => pipeline.del(k));
-    pipeline.del('ticket_slots_counter');
-    await pipeline.exec();
+    if (keys.length > 0) {
+      const pipeline = this.redis.pipeline();
+      keys.forEach(k => pipeline.del(k));
+      await pipeline.exec();
+    }
+    await this.redis.del('ticket_slots_counter');
+    
     return { success: true, message: 'Slot pool counter has been reset.' };
   }
 
