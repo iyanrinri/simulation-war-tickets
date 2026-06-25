@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { io } from 'socket.io-client'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || `http://localhost:${import.meta.env.VITE_BACKEND_PORT || '3000'}`
+const BACKEND_URL = ''
 const API_BASE = `${BACKEND_URL}/api/v1/tickets`
 const socket = io(BACKEND_URL)
 
