@@ -15,7 +15,6 @@ const statusMessage = ref('')
 const isBotLoading = ref(false)
 const isSimulationRunning = ref(false)
 const activeBotsCount = ref(0)
-const logs = ref([])
 
 const updateMaxSlots = async () => {
   if (newMaxSlots.value < 1) return
@@ -74,9 +73,6 @@ onMounted(() => {
     activeBotsCount.value = data.activeBots
     if (newMaxSlots.value === 1000 && data.maxSlots !== 1000) {
       newMaxSlots.value = data.maxSlots
-    }
-    if (data.logs) {
-      logs.value = data.logs
     }
   })
 })
@@ -193,17 +189,6 @@ onUnmounted(() => {
 
       <div v-if="statusMessage" class="mt-6 p-4 bg-surface-soft rounded-lg text-sm text-ink font-medium border border-hairline">
         {{ statusMessage }}
-      </div>
-
-      <!-- Live Logs Area -->
-      <div class="pt-8 mt-8 border-t border-hairline">
-        <h3 class="text-base font-semibold text-ink mb-4">Live Activity Logs</h3>
-        <div class="bg-[#111] rounded-lg p-4 h-64 overflow-y-auto font-mono text-xs text-gray-300 shadow-inner">
-          <div v-if="logs.length === 0" class="text-gray-500 italic">No activity yet...</div>
-          <div v-for="(log, idx) in logs" :key="idx" class="mb-1 border-b border-gray-800 pb-1 last:border-0 hover:bg-gray-800/50 px-1 rounded transition-colors">
-            {{ log }}
-          </div>
-        </div>
       </div>
     </div>
   </div>

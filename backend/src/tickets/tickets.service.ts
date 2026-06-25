@@ -11,7 +11,12 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
   private logs: string[] = [];
 
   private addLog(message: string) {
-    const timestamp = new Date().toLocaleTimeString();
+    const timestamp = new Date().toLocaleString('id-ID', {
+      timeZone: 'Asia/Jakarta', 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit'
+    });
     this.logs.unshift(`[${timestamp}] ${message}`);
     if (this.logs.length > 50) {
       this.logs.pop();
@@ -66,14 +71,14 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       throw new HttpException('Slot penuh, silakan coba beberapa saat lagi.', HttpStatus.TOO_MANY_REQUESTS);
     }
     
-    this.addLog(`${userId.includes('bot') ? '🤖 Bot' : '👤 User'} ${userId.slice(-6)} reserved a slot.`);
+    this.addLog(`User session ***${userId.slice(-4)} reserved a slot.`);
     return { sessionToken: sessionKey, expiresInSeconds: this.SESSION_TTL, existing: false };
   }
 
   async releaseSlot(userId: string) {
     const sessionKey = `user_slot:${userId}`;
     await this.redis.zrem('active_ticket_slots', sessionKey);
-    this.addLog(`${userId.includes('bot') ? '🤖 Bot' : '👤 User'} ${userId.slice(-6)} checked out and released slot.`);
+    this.addLog(`User session ***${userId.slice(-4)} checked out and released slot.`);
     return { success: true };
   }
 
@@ -102,13 +107,13 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     }
     await this.redis.del('ticket_slots_counter');
     
-    this.addLog('⚠️ System: Slot pool counter was forcibly reset.');
+    this.addLog('System: Slot pool counter was forcibly reset.');
     return { success: true, message: 'Slot pool counter has been reset.' };
   }
 
   setMaxSlots(max: number) {
     this.MAX_SLOTS = max;
-    this.addLog(`⚠️ System: Max slots updated to ${max}.`);
+    this.addLog(`System: Max slots updated to ${max}.`);
     return { message: `Max slots successfully updated to ${max}.` };
   }
 
@@ -120,13 +125,13 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     for (let i = 0; i < botCount; i++) {
       this.simulateContinuousBot();
     }
-    this.addLog(`🚀 System: Started continuous simulation with ${botCount} bots.`);
+    this.addLog(`System: Started traffic simulation.`);
     return { message: `Started continuous simulation with ${botCount} bots.` };
   }
 
   async stopBotSimulation() {
     this.isBotSimulationRunning = false;
-    this.addLog('🛑 System: Stopping bots... They will finish their current wait cycles and terminate.');
+    this.addLog('System: Stopping traffic simulation...');
     return { message: 'Stopping bots... They will finish their current wait cycles and terminate.' };
   }
 
@@ -154,7 +159,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         if (shouldCheckout) {
           await this.releaseSlot(botId);
         } else {
-          this.addLog(`💤 Bot ${botId.slice(-6)} abandoned the slot (will expire naturally).`);
+          this.addLog(`User session ***${botId.slice(-4)} abandoned the checkout.`);
         }
         
       } catch (error) {

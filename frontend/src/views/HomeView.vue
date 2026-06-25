@@ -15,6 +15,7 @@ const userId = ref('user_' + Math.floor(Math.random() * 1000000))
 const statusMessage = ref('')
 const isSuccess = ref(false)
 const isLoading = ref(false)
+const logs = ref([])
 
 let countdownInterval = null
 
@@ -78,6 +79,10 @@ onMounted(() => {
   socket.on('counterUpdate', (data) => {
     counter.value = data.currentCounter
     maxSlots.value = data.maxSlots
+    if (data.logs) {
+      // For Shopee live style, we want newest at the bottom
+      logs.value = data.logs.slice(0, 6).reverse()
+    }
   })
 })
 
@@ -240,6 +245,28 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Live Activity Logs (Shopee Live Style) -->
+    <div class="fixed bottom-8 left-4 sm:left-8 w-64 sm:w-80 pointer-events-none flex flex-col justify-end space-y-2.5 z-50 overflow-hidden" style="max-height: 40vh;">
+      <transition-group 
+        enter-active-class="transition-all duration-300 ease-out"
+        enter-from-class="opacity-0 translate-y-4"
+        enter-to-class="opacity-100 translate-y-0"
+        leave-active-class="transition-all duration-300 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0 -translate-y-4"
+      >
+        <div v-for="log in logs" :key="log" class="bg-black/40 backdrop-blur-md text-white/90 px-3 py-2 rounded-2xl text-xs flex items-start space-x-2 shadow-sm border border-white/10">
+          <!-- Icons based on event type -->
+          <svg v-if="log.includes('reserved')" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <svg v-else-if="log.includes('released')" class="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+          <svg v-else-if="log.includes('abandoned')" class="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <svg v-else class="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          
+          <div class="flex-1 break-words leading-snug">{{ log }}</div>
+        </div>
+      </transition-group>
     </div>
   </div>
 </template>
