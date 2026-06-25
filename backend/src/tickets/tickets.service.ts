@@ -8,6 +8,15 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
   private readonly SESSION_TTL = 60; 
   private isBotSimulationRunning = false;
   private activeBotsCount = 0;
+  private logs: string[] = [];
+
+  private addLog(message: string) {
+    const timestamp = new Date().toLocaleTimeString();
+    this.logs.unshift(`[${timestamp}] ${message}`);
+    if (this.logs.length > 50) {
+      this.logs.pop();
+    }
+  }
 
   onModuleInit() {
     this.redis = new Redis({
@@ -57,12 +66,14 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       throw new HttpException('Slot penuh, silakan coba beberapa saat lagi.', HttpStatus.TOO_MANY_REQUESTS);
     }
     
+    this.addLog(`${userId.includes('bot') ? '🤖 Bot' : '👤 User'} ${userId.slice(-6)} reserved a slot.`);
     return { sessionToken: sessionKey, expiresInSeconds: this.SESSION_TTL, existing: false };
   }
 
   async releaseSlot(userId: string) {
     const sessionKey = `user_slot:${userId}`;
     await this.redis.zrem('active_ticket_slots', sessionKey);
+    this.addLog(`${userId.includes('bot') ? '🤖 Bot' : '👤 User'} ${userId.slice(-6)} checked out and released slot.`);
     return { success: true };
   }
 
@@ -74,7 +85,8 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       currentCounter: count,
       maxSlots: this.MAX_SLOTS,
       isSimulationRunning: this.isBotSimulationRunning,
-      activeBots: this.activeBotsCount
+      activeBots: this.activeBotsCount,
+      logs: this.logs
     };
   }
 
@@ -90,11 +102,13 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     }
     await this.redis.del('ticket_slots_counter');
     
+    this.addLog('⚠️ System: Slot pool counter was forcibly reset.');
     return { success: true, message: 'Slot pool counter has been reset.' };
   }
 
   setMaxSlots(max: number) {
     this.MAX_SLOTS = max;
+    this.addLog(`⚠️ System: Max slots updated to ${max}.`);
     return { message: `Max slots successfully updated to ${max}.` };
   }
 
@@ -106,11 +120,13 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     for (let i = 0; i < botCount; i++) {
       this.simulateContinuousBot();
     }
+    this.addLog(`🚀 System: Started continuous simulation with ${botCount} bots.`);
     return { message: `Started continuous simulation with ${botCount} bots.` };
   }
 
   async stopBotSimulation() {
     this.isBotSimulationRunning = false;
+    this.addLog('🛑 System: Stopping bots... They will finish their current wait cycles and terminate.');
     return { message: 'Stopping bots... They will finish their current wait cycles and terminate.' };
   }
 
@@ -137,6 +153,8 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         const shouldCheckout = Math.random() < 0.7;
         if (shouldCheckout) {
           await this.releaseSlot(botId);
+        } else {
+          this.addLog(`💤 Bot ${botId.slice(-6)} abandoned the slot (will expire naturally).`);
         }
         
       } catch (error) {
@@ -147,4 +165,3 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     this.activeBotsCount--;
   }
 }
-
