@@ -11,11 +11,9 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
   private logs: string[] = [];
 
   private addLog(message: string) {
-    const timestamp = new Date().toLocaleString('id-ID', {
-      timeZone: 'Asia/Jakarta', 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit'
+    const timestamp = new Date().toLocaleTimeString('en-GB', {
+      timeZone: 'Asia/Jakarta',
+      hour12: false
     });
     this.logs.unshift(`[${timestamp}] ${message}`);
     if (this.logs.length > 50) {

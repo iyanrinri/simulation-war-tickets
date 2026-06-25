@@ -257,7 +257,7 @@ onUnmounted(() => {
         leave-from-class="opacity-100"
         leave-to-class="opacity-0 -translate-y-4"
       >
-        <div v-for="log in logs" :key="log" class="bg-black/40 backdrop-blur-md text-white/90 px-3 py-2 rounded-2xl text-xs flex items-start space-x-2 shadow-sm border border-white/10">
+        <div v-for="log in logs" :key="log" class="bg-black/75 backdrop-blur-md text-white px-3 py-2.5 rounded-2xl text-xs font-medium flex items-start space-x-2 shadow-lg border border-white/20">
           <!-- Icons based on event type -->
           <svg v-if="log.includes('reserved')" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           <svg v-else-if="log.includes('released')" class="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
