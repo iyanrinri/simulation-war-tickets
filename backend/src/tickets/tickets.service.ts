@@ -4,10 +4,10 @@ import Redis from 'ioredis';
 @Injectable()
 export class TicketsService implements OnModuleInit, OnModuleDestroy {
   private redis: Redis;
-  private readonly MAX_SLOTS = 1000;
-  // TTL shortened for simulation testing. User didn't specify shorter, but I'll use 900s (15 min) as per PRD, 
-  // maybe make it configurable or just stick to 900 as per PRD. Let's stick to 900.
-  private readonly SESSION_TTL = 900; 
+  private MAX_SLOTS = 1000;
+  private readonly SESSION_TTL = 60; 
+  private isBotSimulationRunning = false;
+  private activeBotsCount = 0;
 
   onModuleInit() {
     this.redis = new Redis({
@@ -74,6 +74,8 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     return {
       currentCounter: count ? parseInt(count) : 0,
       maxSlots: this.MAX_SLOTS,
+      isSimulationRunning: this.isBotSimulationRunning,
+      activeBots: this.activeBotsCount
     };
   }
 
@@ -83,7 +85,61 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     keys.forEach(k => pipeline.del(k));
     pipeline.del('ticket_slots_counter');
     await pipeline.exec();
-    return { success: true };
+    return { success: true, message: 'Slot pool counter has been reset.' };
+  }
+
+  setMaxSlots(max: number) {
+    this.MAX_SLOTS = max;
+    return { message: `Max slots successfully updated to ${max}.` };
+  }
+
+  async startBotSimulation(botCount: number) {
+    if (this.isBotSimulationRunning) {
+      return { message: 'Bot simulation is already running.' };
+    }
+    this.isBotSimulationRunning = true;
+    for (let i = 0; i < botCount; i++) {
+      this.simulateContinuousBot();
+    }
+    return { message: `Started continuous simulation with ${botCount} bots.` };
+  }
+
+  async stopBotSimulation() {
+    this.isBotSimulationRunning = false;
+    return { message: 'Stopping bots... They will finish their current wait cycles and terminate.' };
+  }
+
+  private async simulateContinuousBot() {
+    this.activeBotsCount++;
+
+    while (this.isBotSimulationRunning) {
+      const botId = `bot_${Math.floor(Math.random() * 1000000)}_${Date.now()}`;
+      
+      try {
+        // 1. Bot attempts to request a slot
+        await this.requestSlot(botId);
+        
+        // 2. Wait randomly between 5 to 45 seconds
+        const waitTime = Math.floor(Math.random() * 40000) + 5000;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+
+        if (!this.isBotSimulationRunning) {
+          await this.releaseSlot(botId).catch(() => {});
+          break;
+        }
+
+        // 3. Randomly decide to checkout (70% chance) or do nothing (30% chance - letting TTL expire)
+        const shouldCheckout = Math.random() < 0.7;
+        if (shouldCheckout) {
+          await this.releaseSlot(botId);
+        }
+        
+      } catch (error) {
+        // Slot request failed (probably HTTP 429 Too Many Requests), wait a short time before retrying
+        await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 3000) + 1000));
+      }
+    }
+    this.activeBotsCount--;
   }
 }
 

@@ -3,24 +3,54 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { io } from 'socket.io-client'
 
-const backendPort = import.meta.env.VITE_BACKEND_PORT || '3000'
-const API_BASE = `http://localhost:${backendPort}/api/v1/tickets`
-const socket = io(`http://localhost:${backendPort}`)
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || `http://localhost:${import.meta.env.VITE_BACKEND_PORT || '3000'}`
+const API_BASE = `${BACKEND_URL}/api/v1/tickets`
+const socket = io(BACKEND_URL)
 
 const counter = ref(0)
 const maxSlots = ref(1000)
+const newMaxSlots = ref(1000)
+const botCount = ref(100)
 const statusMessage = ref('')
-let pollInterval = null
+const isBotLoading = ref(false)
+const isSimulationRunning = ref(false)
+const activeBotsCount = ref(0)
 
-const fetchCounter = async () => {
+const updateMaxSlots = async () => {
+  if (newMaxSlots.value < 1) return
   try {
-    const res = await axios.get(`${API_BASE}/slot-counter`)
-    if (res.data && res.data.success) {
-      counter.value = res.data.data.currentCounter
-      maxSlots.value = res.data.data.maxSlots
-    }
+    await axios.post(`${API_BASE}/max-slots`, { maxSlots: newMaxSlots.value })
+    statusMessage.value = `Max slots updated to ${newMaxSlots.value}.`
+    setTimeout(() => { statusMessage.value = '' }, 3000)
   } catch (err) {
-    console.error('Error fetching counter', err)
+    statusMessage.value = 'Failed to update max slots.'
+  }
+}
+
+const startBots = async () => {
+  if (botCount.value < 1) return
+  isBotLoading.value = true
+  try {
+    const res = await axios.post(`${API_BASE}/start-bots`, { botCount: botCount.value })
+    statusMessage.value = res.data.message
+    setTimeout(() => { statusMessage.value = '' }, 5000)
+  } catch (err) {
+    statusMessage.value = 'Failed to start bots.'
+  } finally {
+    isBotLoading.value = false
+  }
+}
+
+const stopBots = async () => {
+  isBotLoading.value = true
+  try {
+    const res = await axios.post(`${API_BASE}/stop-bots`)
+    statusMessage.value = res.data.message
+    setTimeout(() => { statusMessage.value = '' }, 5000)
+  } catch (err) {
+    statusMessage.value = 'Failed to stop bots.'
+  } finally {
+    isBotLoading.value = false
   }
 }
 
@@ -29,7 +59,7 @@ const resetPool = async () => {
   try {
     await axios.post(`${API_BASE}/reset-pool`)
     statusMessage.value = 'Pool successfully reset.'
-    fetchCounter()
+    setTimeout(() => { statusMessage.value = '' }, 3000)
   } catch (err) {
     statusMessage.value = 'Failed to reset pool.'
   }
@@ -39,6 +69,11 @@ onMounted(() => {
   socket.on('counterUpdate', (data) => {
     counter.value = data.currentCounter
     maxSlots.value = data.maxSlots
+    isSimulationRunning.value = data.isSimulationRunning
+    activeBotsCount.value = data.activeBots
+    if (newMaxSlots.value === 1000 && data.maxSlots !== 1000) {
+      newMaxSlots.value = data.maxSlots
+    }
   })
 })
 
@@ -48,41 +83,112 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center justify-center min-h-screen px-4 font-sans tracking-wide">
-    <div class="absolute inset-0 bg-[#0b0f19] -z-10"></div>
-    
-    <div class="w-full max-w-md">
-      <div class="mb-8 text-center">
-        <h1 class="text-2xl font-bold tracking-tight text-white">System Administration</h1>
-        <p class="mt-2 text-sm text-gray-400">Simulation Control Panel</p>
-      </div>
-      
-      <div class="p-8 bg-white/5 border border-white/10 backdrop-blur-xl rounded-3xl shadow-2xl relative overflow-hidden">
-        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-500 to-orange-500"></div>
+  <div class="max-w-[800px] mx-auto px-6 py-12">
+    <!-- Breadcrumb -->
+    <div class="flex items-center space-x-2 text-sm text-ink mb-8">
+      <router-link to="/" class="hover:underline cursor-pointer">Home</router-link>
+      <span class="text-muted">›</span>
+      <span class="text-muted">Administration</span>
+    </div>
 
-        <div class="mb-8 text-center">
-          <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Current Load</p>
-          <div class="text-5xl font-black text-white tabular-nums tracking-tighter">
-            {{ counter }}<span class="text-2xl text-gray-600 font-medium">/{{ maxSlots }}</span>
+    <div class="mb-10">
+      <h1 class="text-[32px] font-semibold tracking-tight text-ink">System Administration</h1>
+      <p class="text-muted text-base mt-2">Manage the live slot pool capacity and monitor active sessions.</p>
+    </div>
+
+    <!-- Stats Card -->
+    <div class="bg-canvas border border-hairline rounded-2xl p-8 mb-8 shadow-sm">
+      <div class="flex justify-between items-center pb-8 border-b border-hairline">
+        <div>
+          <h2 class="text-lg font-semibold text-ink">Live Capacity</h2>
+          <p class="text-sm text-muted mt-1">Current active checkouts</p>
+        </div>
+        <div class="text-right">
+          <div class="text-5xl font-bold tracking-tight text-ink">
+            {{ counter }}
+          </div>
+          <div class="text-sm text-muted mt-1 font-medium">of {{ maxSlots }} slots filled</div>
+        </div>
+      </div>
+
+      <div class="pt-8 flex items-center justify-between border-b border-hairline pb-8">
+        <div class="pr-8">
+          <h3 class="text-base font-semibold text-ink">Update Max Slots</h3>
+          <p class="text-sm text-muted mt-1">Change the maximum allowed concurrent sessions.</p>
+        </div>
+        <div class="flex items-center space-x-3">
+          <input 
+            type="number" 
+            v-model="newMaxSlots" 
+            min="1"
+            class="w-24 px-3 py-2 border border-hairline rounded-lg text-ink focus:outline-none focus:ring-2 focus:ring-ink focus:border-transparent"
+          />
+          <button 
+            @click="updateMaxSlots" 
+            class="flex-shrink-0 px-6 py-2.5 bg-ink text-white hover:bg-black font-semibold text-sm rounded-lg transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-ink"
+          >
+            Update
+          </button>
+        </div>
+      </div>
+
+      <!-- Bot Simulation Area -->
+      <div class="pt-8 flex items-center justify-between border-b border-hairline pb-8">
+        <div class="pr-8">
+          <h3 class="text-base font-semibold text-ink">Continuous Bot Simulation</h3>
+          <p class="text-sm text-muted mt-1">Simulate concurrent traffic spikes by spawning automated users that loop continuously until stopped.</p>
+          <div v-if="isSimulationRunning" class="mt-2 text-sm font-medium text-[#ff385c] flex items-center space-x-2">
+            <span class="relative flex h-3 w-3">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff385c] opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-[#ff385c]"></span>
+            </span>
+            <span>Simulation Running ({{ activeBotsCount }} active bots)</span>
           </div>
         </div>
-
-        <button 
-          @click="resetPool" 
-          class="w-full px-6 py-4 text-sm font-bold text-rose-400 transition-all duration-200 bg-rose-500/10 border border-rose-500/20 rounded-xl hover:bg-rose-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0b0f19] focus:ring-rose-500"
-        >
-          Force Reset Pool
-        </button>
-
-        <div v-if="statusMessage" class="mt-6 p-4 text-sm text-center text-rose-300 bg-rose-500/10 rounded-xl border border-rose-500/20 backdrop-blur-md">
-          {{ statusMessage }}
+        <div class="flex items-center space-x-3">
+          <input 
+            v-if="!isSimulationRunning"
+            type="number" 
+            v-model="botCount" 
+            min="1"
+            max="10000"
+            class="w-24 px-3 py-2 border border-hairline rounded-lg text-ink focus:outline-none focus:ring-2 focus:ring-ink focus:border-transparent"
+          />
+          <button 
+            v-if="!isSimulationRunning"
+            @click="startBots" 
+            :disabled="isBotLoading"
+            class="flex-shrink-0 px-6 py-2.5 bg-[#ff385c] text-white hover:bg-[#e00b41] font-semibold text-sm rounded-lg transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-[#ff385c] disabled:opacity-50"
+          >
+            {{ isBotLoading ? 'Starting...' : 'Start Bots' }}
+          </button>
+          <button 
+            v-else
+            @click="stopBots" 
+            :disabled="isBotLoading"
+            class="flex-shrink-0 px-6 py-2.5 bg-ink text-white hover:bg-black font-semibold text-sm rounded-lg transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-ink disabled:opacity-50"
+          >
+            {{ isBotLoading ? 'Stopping...' : 'Stop Bots' }}
+          </button>
         </div>
       </div>
-      
-      <div class="mt-8 text-center">
-        <router-link to="/" class="text-xs font-medium tracking-widest uppercase text-indigo-400 hover:text-indigo-300 transition-colors">
-          Return to Interface
-        </router-link>
+
+      <!-- Action Area -->
+      <div class="pt-8 flex items-center justify-between">
+        <div class="pr-8">
+          <h3 class="text-base font-semibold text-ink">Force Reset Pool</h3>
+          <p class="text-sm text-muted mt-1">Instantly drops all active sessions and resets the counter to 0. Use with caution.</p>
+        </div>
+        <button 
+          @click="resetPool" 
+          class="flex-shrink-0 px-6 py-3 bg-canvas border border-ink text-ink hover:bg-surface-soft font-semibold text-sm rounded-lg transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-ink"
+        >
+          Reset Now
+        </button>
+      </div>
+
+      <div v-if="statusMessage" class="mt-6 p-4 bg-surface-soft rounded-lg text-sm text-ink font-medium border border-hairline">
+        {{ statusMessage }}
       </div>
     </div>
   </div>

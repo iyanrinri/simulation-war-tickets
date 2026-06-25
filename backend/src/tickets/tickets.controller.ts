@@ -48,4 +48,32 @@ export class TicketsController {
       message: "Slot pool has been reset to 0."
     };
   }
+
+  @Post('max-slots')
+  @HttpCode(HttpStatus.OK)
+  setMaxSlots(@Body('maxSlots') maxSlots: number) {
+    const parsedMax = parseInt(maxSlots as any, 10);
+    if (isNaN(parsedMax) || parsedMax < 1) {
+      return { success: false, message: 'Invalid max slots value.' };
+    }
+    const result = this.ticketsService.setMaxSlots(parsedMax);
+    return { success: true, message: result.message };
+  }
+
+  @Post('start-bots')
+  @HttpCode(HttpStatus.OK)
+  async startBots(@Body('botCount') botCount: number) {
+    const parsedCount = parseInt(botCount as any, 10) || 100;
+    const count = Math.min(Math.max(parsedCount, 1), 10000); 
+    
+    const result = await this.ticketsService.startBotSimulation(count);
+    return { success: true, message: result.message };
+  }
+
+  @Post('stop-bots')
+  @HttpCode(HttpStatus.OK)
+  async stopBots() {
+    const result = await this.ticketsService.stopBotSimulation();
+    return { success: true, message: result.message };
+  }
 }

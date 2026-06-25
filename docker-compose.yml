@@ -38,6 +38,7 @@ services:
       - /app/node_modules
     environment:
       - VITE_BACKEND_PORT=${BACKEND_PORT:-3000}
+      - VITE_BACKEND_URL=${BACKEND_URL:-}
     depends_on:
       - backend
     restart: always
